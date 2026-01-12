@@ -48,7 +48,7 @@ jobs:
         path: |
           build
           /var/lib/docker
-        key: ${{ runner.os }}-${{ matrix.platform }}-v2-${{ matrix.depth }}
+        key: ${{ runner.os }}-${{ matrix.platform }}-v3-${{ matrix.depth }}
 
     - name: Set build parameters
       run: |
@@ -88,9 +88,11 @@ jobs:
           export IDF_TARGET=esp32s3 && 
           rm -f sdkconfig sdkconfig.old && 
           cp build-scripts/${TARGET_BUILD_NAME}-sdkconfig.defaults sdkconfig && 
-          idf.py --preview set-target esp32s3 && 
+          # Форсируем настройки для обхода бага rtc_sleep.c на S3
           echo 'CONFIG_PM_ENABLE=n' >> sdkconfig && 
-          echo 'CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=n' >> sdkconfig && 
+          echo 'CONFIG_ESP32S3_PHY_WIFI_ANT_DIFF=n' >> sdkconfig &&
+          echo 'CONFIG_BT_ENABLED=n' >> sdkconfig &&
+          idf.py --preview set-target esp32s3 && 
           idf.py build -DIDF_TARGET=esp32s3 -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}-${{ matrix.depth }} && 
           zip -r build_output.zip build"
 
