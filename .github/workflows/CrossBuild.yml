@@ -80,10 +80,10 @@ jobs:
       run: |
         env | grep "artifact\|tag\|GITHUB\|version\|NUMBER\|TARGET" >${TARGET_BUILD_NAME}-env.txt
         echo "${tag}" >version.txt
-        # Скачиваем рабочую версию образа для ESP-IDF 4.3
-        docker pull sle118/idf:v4.3
-        # Запускаем сборку
-        docker run --env-file=${TARGET_BUILD_NAME}-env.txt -v $PWD:/project -w /project sle118/idf:v4.3 /bin/bash -c "cp build-scripts/${TARGET_BUILD_NAME}-sdkconfig.defaults sdkconfig && idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}-${{ matrix.depth }} && zip -r build_output.zip build"
+        # Используем официальный образ Espressif
+        docker pull espressif/idf:release-v4.3
+        # Запускаем сборку (добавлена установка необходимых инструментов внутри контейнера)
+        docker run --env-file=${TARGET_BUILD_NAME}-env.txt -v $PWD:/project -w /project espressif/idf:release-v4.3 /bin/bash -c "apt-get update && apt-get install -y zip && cp build-scripts/${TARGET_BUILD_NAME}-sdkconfig.defaults sdkconfig && idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}-${{ matrix.depth }} && zip -r build_output.zip build"
 
     - uses: actions/upload-artifact@v4
       with:
