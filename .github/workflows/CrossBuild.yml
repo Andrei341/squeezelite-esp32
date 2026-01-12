@@ -70,20 +70,21 @@ jobs:
           export LC_ALL=C.UTF-8 && 
           export IDF_TARGET=esp32s3 && 
           
-          # ГЛОБАЛЬНЫЕ ИСПРАВЛЕНИЯ КОДА под ESP32-S3
-          # 1. Заменяем устаревшую функцию GPIO во всех файлах компонентов
+          # ГЛОБАЛЬНЫЕ ИСПРАВЛЕНИЯ ПОД S3
+          # 1. Заменяем функцию и ДОБАВЛЯЕМ инклуд rom/gpio.h во все файлы
           find components -type f -name '*.[ch]' -exec sed -i 's/gpio_pad_select_gpio/esp_rom_gpio_pad_select_gpio/g' {} +
+          find components -type f -name '*.[ch]' -exec sed -i '1i #include \"rom/gpio.h\"' {} +
           
-          # 2. Исправляем ADC_WIDTH_BIT_12 на 12 (совместимо с S3)
+          # 2. Исправляем ADC
           find components -type f -name '*.[ch]' -exec sed -i 's/ADC_WIDTH_BIT_12/12/g' {} +
           
-          # 3. Фикс драйвера rtc_sleep (удаляем содержимое, чтобы не было конфликтов)
+          # 3. Фикс rtc_sleep (пустой файл)
           echo '' > /opt/esp/idf/components/esp_hw_support/port/esp32s3/rtc_sleep.c
           
           rm -rf build sdkconfig && 
           cp build-scripts/${TARGET_BUILD_NAME}-sdkconfig.defaults sdkconfig && 
           
-          # Принудительно отключаем Ethernet (вызывает ошибки на S3)
+          # Отключаем Ethernet
           echo 'CONFIG_ETH_ENABLED=n' >> sdkconfig &&
           
           idf.py --preview set-target esp32s3 && 
