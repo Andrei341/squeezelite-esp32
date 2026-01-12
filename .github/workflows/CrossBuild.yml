@@ -6,10 +6,11 @@ on:
     branches: 
       - master
       - master-cmake
+      - master-v4.3
   pull_request:
     branches:
       - 'master-cmake'
-
+      - 'master-v4.3'
 jobs:
   job1:
     name: Build Number
