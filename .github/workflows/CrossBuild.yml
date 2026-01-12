@@ -85,7 +85,6 @@ jobs:
           apt-get update && apt-get install -y zip protobuf-compiler && 
           python3 -m pip install protobuf==3.19.6 && 
           export LC_ALL=C.UTF-8 && 
-          rm -rf components/spotify && 
           cp build-scripts/${TARGET_BUILD_NAME}-sdkconfig.defaults sdkconfig && 
           idf.py --preview set-target esp32s3 && 
           idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}-${{ matrix.depth }} && 
