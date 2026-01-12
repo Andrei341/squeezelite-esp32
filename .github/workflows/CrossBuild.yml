@@ -4,13 +4,11 @@ on:
   workflow_dispatch:
   push:
     branches: 
-      - master
-      - master-cmake
       - master-v4.3
   pull_request:
     branches:
-      - 'master-cmake'
-      - 'master-v4.3'
+      - master-v4.3
+
 jobs:
   job1:
     name: Build Number
@@ -70,7 +68,6 @@ jobs:
         artifact_file_name="${artifact_prefix}.zip"
         artifact_bin_file_name="${artifact_prefix}.bin"
         echo "name=${name}" >> $GITHUB_ENV
-        echo "last_commit=${last_commit}" >> $GITHUB_ENV
         echo "artifact_file_name=${artifact_file_name}" >> $GITHUB_ENV
         echo "PROJECT_VER=${TARGET_BUILD_NAME}-${{ steps.buildnumber.outputs.build_number }} " >> $GITHUB_ENV
         echo "artifact_bin_file_name=${artifact_bin_file_name}" >> $GITHUB_ENV
@@ -78,7 +75,6 @@ jobs:
         echo 'description<<~EOD' >> $GITHUB_ENV
         echo "${description}" >> $GITHUB_ENV
         echo '~EOD' >> $GITHUB_ENV
-        env
 
     - name: Build the firmware
       run: |
