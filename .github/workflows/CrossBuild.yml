@@ -38,23 +38,29 @@ jobs:
           apt-get update && apt-get install -y zip protobuf-compiler && 
           python3 -m pip install protobuf==3.19.6 && 
           
-          # 1. Global Code Replacements for S3
+          # 1. Глобальные замены функций
           find components -type f \( -name '*.c' -o -name '*.h' \) -exec sed -i 's/gpio_pad_select_gpio/esp_rom_gpio_pad_select_gpio/g' {} +
-          find components -type f \( -name '*.c' -o -name '*.h' \) -exec sed -i 's/ADC_WIDTH_BIT_12/ADC_WIDTH_BIT_13/g' {} +
+          find components -type f \( -name '*.c' -o -name '*.h' \) -exec sed -i 's/ADC_WIDTH_BIT_12/12/g' {} +
 
-          # 2. Inject Headers via CMake (The most reliable way)
-          # This adds the include flags to the global compile options
-          sed -i \"/project(SqueezeESP32)/a add_compile_options(-include esp_rom_gpio.h -include soc/gpio_sig_map.h)\" CMakeLists.txt
+          # 2. Лечим ошибку с esp_eth.h (создаем пустую заглушку в системной папке)
+          touch /opt/esp/idf/components/esp_eth/include/esp_eth.h
 
-          # 3. Create a valid stub for rtc_sleep to prevent linker errors
+          # 3. Лечим GPIO через CMake. Вставляем в САМОЕ НАЧАЛО файла CMakeLists.txt
+          echo 'add_compile_options(-include esp_rom_gpio.h -include soc/gpio_sig_map.h)' > temp_cmake
+          cat CMakeLists.txt >> temp_cmake
+          mv temp_cmake CMakeLists.txt
+
+          # 4. Фикс rtc_sleep для S3
           echo 'void rtc_sleep_get_default_config(void *cfg) { }' > /opt/esp/idf/components/esp_hw_support/port/esp32s3/rtc_sleep.c
 
-          # 4. Prepare Config
+          # 5. Сборка
           rm -rf build sdkconfig
           cp build-scripts/${{ matrix.platform }}-sdkconfig.defaults sdkconfig
-          echo 'CONFIG_ETH_ENABLED=n' >> sdkconfig
           
-          # 5. Build
+          # Принудительно гасим Ethernet и Power Management в конфиге
+          echo 'CONFIG_ETH_ENABLED=n' >> sdkconfig
+          echo 'CONFIG_PM_ENABLE=n' >> sdkconfig
+          
           export IDF_TARGET=esp32s3
           idf.py --preview set-target esp32s3
           idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}
