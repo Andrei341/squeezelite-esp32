@@ -23,67 +23,50 @@ jobs:
     runs-on: ubuntu-latest
     needs: job1
     strategy:
-      max-parallel: 1
       matrix:
         platform: [S3-16-o-q-ads]
         depth: [16]
     steps:
-    - name: Set target name
-      run: |
-        echo "TARGET_BUILD_NAME=${{ matrix.platform }}" >> $GITHUB_ENV
-
     - uses: actions/checkout@v4
       with:
         submodules: true
 
     - name: Build the firmware
       run: |
-        # Подготовка параметров
-        BUILD_NUM=${{ needs.job1.outputs.build_number }}
-        echo "${{ matrix.platform }}.${{ matrix.depth }}.${BUILD_NUM}" > version.txt
-        
         docker pull espressif/idf:release-v4.3
         docker run --rm -v $PWD:/project -w /project espressif/idf:release-v4.3 /bin/bash -c "
           apt-get update && apt-get install -y zip protobuf-compiler && 
           python3 -m pip install protobuf==3.19.6 && 
           
-          export IDF_TARGET=esp32s3 && 
-          
-          # --- ПАТЧИМ ИСХОДНИКИ ---
-          # 1. Заменяем старую функцию на новую во всем проекте
+          # 1. Global Code Replacements for S3
           find components -type f \( -name '*.c' -o -name '*.h' \) -exec sed -i 's/gpio_pad_select_gpio/esp_rom_gpio_pad_select_gpio/g' {} +
-          
-          # 2. Исправляем ошибку ADC для S3
           find components -type f \( -name '*.c' -o -name '*.h' \) -exec sed -i 's/ADC_WIDTH_BIT_12/ADC_WIDTH_BIT_13/g' {} +
 
-          # 3. Фикс rtc_sleep.c (заглушка для компиляции)
-          mkdir -p components/esp_hw_support/port/esp32s3/
-          echo 'void rtc_sleep_get_default_config(void *cfg) { return; }' > /opt/esp/idf/components/esp_hw_support/port/esp32s3/rtc_sleep.c
+          # 2. Inject Headers via CMake (The most reliable way)
+          # This adds the include flags to the global compile options
+          sed -i \"/project(SqueezeESP32)/a add_compile_options(-include esp_rom_gpio.h -include soc/gpio_sig_map.h)\" CMakeLists.txt
 
-          # --- СБОРКА С ПРИНУДИТЕЛЬНЫМ ВКЛЮЧЕНИЕМ ЗАГОЛОВКОВ ---
-          rm -rf build sdkconfig && 
-          cp build-scripts/${{ matrix.platform }}-sdkconfig.defaults sdkconfig && 
+          # 3. Create a valid stub for rtc_sleep to prevent linker errors
+          echo 'void rtc_sleep_get_default_config(void *cfg) { }' > /opt/esp/idf/components/esp_hw_support/port/esp32s3/rtc_sleep.c
+
+          # 4. Prepare Config
+          rm -rf build sdkconfig
+          cp build-scripts/${{ matrix.platform }}-sdkconfig.defaults sdkconfig
+          echo 'CONFIG_ETH_ENABLED=n' >> sdkconfig
           
-          # Отключаем Ethernet (критично для S3 на этой версии)
-          echo 'CONFIG_ETH_ENABLED=n' >> sdkconfig &&
-          
-          idf.py --preview set-target esp32s3 && 
-          
-          # Мы добавляем -include esp_rom_gpio.h прямо в флаги компилятора! 
-          # Это решит проблему 'implicit declaration' без правки 100 файлов вручную.
-          export CFLAGS=\"-include esp_rom_gpio.h -include soc/gpio_sig_map.h\" &&
-          
-          idf.py build -DIDF_TARGET=esp32s3 -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${BUILD_NUM}
+          # 5. Build
+          export IDF_TARGET=esp32s3
+          idf.py --preview set-target esp32s3
+          idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}
         "
 
     - name: Upload Artifacts
-      if: always() # Загружать даже если сборка упала (чтобы вы могли видеть логи в zip)
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.TARGET_BUILD_NAME }}-artifacts
+        name: ${{ matrix.platform }}-bin
         path: |
           build/*.bin
           build/bootloader/bootloader.bin
           build/partition_table/partition-table.bin
           build/sdkconfig
-          build/*.map
