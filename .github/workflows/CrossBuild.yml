@@ -48,7 +48,7 @@ jobs:
         path: |
           build
           /var/lib/docker
-        key: ${{ runner.os }}-${{ matrix.platform }}-v3-${{ matrix.depth }}
+        key: ${{ runner.os }}-${{ matrix.platform }}-vFINAL-${{ matrix.depth }}
 
     - name: Set build parameters
       run: |
@@ -86,12 +86,11 @@ jobs:
           python3 -m pip install protobuf==3.19.6 && 
           export LC_ALL=C.UTF-8 && 
           export IDF_TARGET=esp32s3 && 
-          rm -f sdkconfig sdkconfig.old && 
+          # ХИРУРГИЧЕСКОЕ РЕШЕНИЕ: Удаляем проблемный файл драйвера сна, который несовместим с S3 в этой версии
+          rm -f /opt/esp/idf/components/esp_hw_support/port/esp32s3/rtc_sleep.c && 
+          touch /opt/esp/idf/components/esp_hw_support/port/esp32s3/rtc_sleep.c &&
+          rm -rf build sdkconfig && 
           cp build-scripts/${TARGET_BUILD_NAME}-sdkconfig.defaults sdkconfig && 
-          # Форсируем настройки для обхода бага rtc_sleep.c на S3
-          echo 'CONFIG_PM_ENABLE=n' >> sdkconfig && 
-          echo 'CONFIG_ESP32S3_PHY_WIFI_ANT_DIFF=n' >> sdkconfig &&
-          echo 'CONFIG_BT_ENABLED=n' >> sdkconfig &&
           idf.py --preview set-target esp32s3 && 
           idf.py build -DIDF_TARGET=esp32s3 -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}-${{ matrix.depth }} && 
           zip -r build_output.zip build"
