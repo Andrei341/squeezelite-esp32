@@ -85,9 +85,10 @@ jobs:
           apt-get update && apt-get install -y zip protobuf-compiler && 
           python3 -m pip install protobuf==3.19.6 && 
           export LC_ALL=C.UTF-8 && 
+          export IDF_TARGET=esp32s3 && 
           cp build-scripts/${TARGET_BUILD_NAME}-sdkconfig.defaults sdkconfig && 
           idf.py --preview set-target esp32s3 && 
-          idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}-${{ matrix.depth }} && 
+          idf.py build -DIDF_TARGET=esp32s3 -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}-${{ matrix.depth }} && 
           zip -r build_output.zip build"
 
     - uses: actions/upload-artifact@v4
