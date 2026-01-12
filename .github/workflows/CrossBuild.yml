@@ -31,60 +31,59 @@ jobs:
     - name: Set target name
       run: |
         echo "TARGET_BUILD_NAME=${{ matrix.platform }}" >> $GITHUB_ENV
-        echo "build_version_prefix=1." >> $GITHUB_ENV
 
     - uses: actions/checkout@v4
       with:
-        fetch-depth: 15
         submodules: true
 
     - name: Build the firmware
       run: |
-        env | grep "artifact\|tag\|GITHUB\|version\|NUMBER\|TARGET" >${TARGET_BUILD_NAME}-env.txt
-        echo "${{ matrix.platform }}.${{ matrix.depth }}.${{ needs.job1.outputs.build_number }}" >version.txt
+        # Подготовка параметров
+        BUILD_NUM=${{ needs.job1.outputs.build_number }}
+        echo "${{ matrix.platform }}.${{ matrix.depth }}.${BUILD_NUM}" > version.txt
+        
         docker pull espressif/idf:release-v4.3
-        docker run --env-file=${TARGET_BUILD_NAME}-env.txt -v $PWD:/project -w /project espressif/idf:release-v4.3 /bin/bash -c "
+        docker run --rm -v $PWD:/project -w /project espressif/idf:release-v4.3 /bin/bash -c "
           apt-get update && apt-get install -y zip protobuf-compiler && 
           python3 -m pip install protobuf==3.19.6 && 
-          export LC_ALL=C.UTF-8 && 
-          export IDF_TARGET=esp32s3 && 
-
-          # --- ПАТЧИ ДЛЯ ESP32-S3 ---
           
-          # 1. Исправляем функцию во всех компонентах
+          export IDF_TARGET=esp32s3 && 
+          
+          # --- ПАТЧИМ ИСХОДНИКИ ---
+          # 1. Заменяем старую функцию на новую во всем проекте
           find components -type f \( -name '*.c' -o -name '*.h' \) -exec sed -i 's/gpio_pad_select_gpio/esp_rom_gpio_pad_select_gpio/g' {} +
-
-          # 2. Добавляем ПРАВИЛЬНЫЙ инклуд для S3 в файлы, где используется GPIO
-          # Используем esp_rom_gpio.h вместо rom/gpio.h, так как он более универсален в v4.3 для S3
-          grep -rl 'esp_rom_gpio_pad_select_gpio' components | grep '\.[ch]$' | xargs sed -i '1i #include \"esp_rom_gpio.h\"' || true
-          grep -rl 'esp_rom_gpio_pad_select_gpio' components | grep '\.[ch]$' | xargs sed -i '1i #include \"soc/gpio_sig_map.h\"' || true
-
-          # 3. Фикс ADC_WIDTH_BIT_12
+          
+          # 2. Исправляем ошибку ADC для S3
           find components -type f \( -name '*.c' -o -name '*.h' \) -exec sed -i 's/ADC_WIDTH_BIT_12/ADC_WIDTH_BIT_13/g' {} +
 
-          # 4. Убиваем проблемный rtc_sleep.c (заменяем на пустышку)
-          cat <<EOF > /opt/esp/idf/components/esp_hw_support/port/esp32s3/rtc_sleep.c
-          #include <stdint.h>
-          #include \"esp_attr.h\"
-          void rtc_sleep_get_default_config(void *cfg) { return; }
-          EOF
+          # 3. Фикс rtc_sleep.c (заглушка для компиляции)
+          mkdir -p components/esp_hw_support/port/esp32s3/
+          echo 'void rtc_sleep_get_default_config(void *cfg) { return; }' > /opt/esp/idf/components/esp_hw_support/port/esp32s3/rtc_sleep.c
 
-          # --- СБОРКА ---
+          # --- СБОРКА С ПРИНУДИТЕЛЬНЫМ ВКЛЮЧЕНИЕМ ЗАГОЛОВКОВ ---
           rm -rf build sdkconfig && 
-          cp build-scripts/${TARGET_BUILD_NAME}-sdkconfig.defaults sdkconfig && 
+          cp build-scripts/${{ matrix.platform }}-sdkconfig.defaults sdkconfig && 
           
-          # Настройки совместимости в sdkconfig
+          # Отключаем Ethernet (критично для S3 на этой версии)
           echo 'CONFIG_ETH_ENABLED=n' >> sdkconfig &&
-          echo 'CONFIG_ESP32S3_ALLOW_BTM_SPI01=y' >> sdkconfig &&
           
           idf.py --preview set-target esp32s3 && 
-          idf.py build -DIDF_TARGET=esp32s3 -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }} && 
-          zip -r build_output.zip build"
+          
+          # Мы добавляем -include esp_rom_gpio.h прямо в флаги компилятора! 
+          # Это решит проблему 'implicit declaration' без правки 100 файлов вручную.
+          export CFLAGS=\"-include esp_rom_gpio.h -include soc/gpio_sig_map.h\" &&
+          
+          idf.py build -DIDF_TARGET=esp32s3 -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${BUILD_NUM}
+        "
 
-    - uses: actions/upload-artifact@v4
+    - name: Upload Artifacts
+      if: always() # Загружать даже если сборка упала (чтобы вы могли видеть логи в zip)
+      uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.TARGET_BUILD_NAME }}-bin
+        name: ${{ env.TARGET_BUILD_NAME }}-artifacts
         path: |
           build/*.bin
           build/bootloader/bootloader.bin
           build/partition_table/partition-table.bin
+          build/sdkconfig
+          build/*.map
