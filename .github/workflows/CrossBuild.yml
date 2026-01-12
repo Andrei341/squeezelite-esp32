@@ -48,7 +48,7 @@ jobs:
         path: |
           build
           /var/lib/docker
-        key: ${{ runner.os }}-${{ matrix.platform }}-${{ matrix.depth }}
+        key: ${{ runner.os }}-${{ matrix.platform }}-v2-${{ matrix.depth }}
 
     - name: Set build parameters
       run: |
@@ -71,7 +71,7 @@ jobs:
         echo "artifact_file_name=${artifact_file_name}" >> $GITHUB_ENV
         echo "PROJECT_VER=${TARGET_BUILD_NAME}-${{ steps.buildnumber.outputs.build_number }} " >> $GITHUB_ENV
         echo "artifact_bin_file_name=${artifact_bin_file_name}" >> $GITHUB_ENV
-        description="Build for S3 N16R8 (Octal RAM + ADC Support)"
+        description="Build for S3 N16R8"
         echo 'description<<~EOD' >> $GITHUB_ENV
         echo "${description}" >> $GITHUB_ENV
         echo '~EOD' >> $GITHUB_ENV
@@ -86,8 +86,11 @@ jobs:
           python3 -m pip install protobuf==3.19.6 && 
           export LC_ALL=C.UTF-8 && 
           export IDF_TARGET=esp32s3 && 
+          rm -f sdkconfig sdkconfig.old && 
           cp build-scripts/${TARGET_BUILD_NAME}-sdkconfig.defaults sdkconfig && 
           idf.py --preview set-target esp32s3 && 
+          echo 'CONFIG_PM_ENABLE=n' >> sdkconfig && 
+          echo 'CONFIG_FREERTOS_GENERATE_RUN_TIME_STATS=n' >> sdkconfig && 
           idf.py build -DIDF_TARGET=esp32s3 -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}-${{ matrix.depth }} && 
           zip -r build_output.zip build"
 
