@@ -1,10 +1,10 @@
-name: Cross-Build-S3-N16R8
+name: Cross-Build-S3-N16R8-v4.4
 
 on:
   workflow_dispatch:
   push:
     branches: 
-      - master-v4.3
+      - master-v4.3  # Это ветка в твоем GitHub, которую мы собираем
 
 jobs:
   job1:
@@ -15,9 +15,8 @@ jobs:
     steps:
     - name: Generate build number
       id: buildnumber
-      uses: einaregilsson/build-number@v3
-      with:
-        token: ${{secrets.github_token}}
+      run: |
+        echo "build_number=$(date +%Y%m%d-%H%M)" >> $GITHUB_OUTPUT
 
   build:
     runs-on: ubuntu-latest
@@ -34,6 +33,7 @@ jobs:
 
     - name: Build the firmware
       run: |
+        # ИСПОЛЬЗУЕМ СТРОГО 4.4 ДЛЯ ПОДДЕРЖКИ S3
         docker pull espressif/idf:release-v4.4
         docker run --rm -v $PWD:/project -w /project espressif/idf:release-v4.4 /bin/bash -c "
           apt-get update && apt-get install -y zip protobuf-compiler && 
@@ -41,12 +41,19 @@ jobs:
           
           export IDF_TARGET=esp32s3
           
-          # 1. УМНАЯ ЗАГЛУШКА ETHERNET
-          # Заполняем файл типами данных, чтобы компилятор не ругался на 'unknown type name'
+          # 1. МАКСИМАЛЬНАЯ ЗАГЛУШКА ETHERNET
+          # Добавляем все типы, которые могут потребоваться wifi-manager
+          mkdir -p components/wifi-manager
           cat <<EOF > components/wifi-manager/esp_eth.h
           #ifndef ESP_ETH_H
           #define ESP_ETH_H
+          #include \"esp_err.h\"
+          #include \"esp_event.h\"
           typedef void* esp_eth_handle_t;
+          typedef struct { int dummy; } esp_eth_config_t;
+          typedef struct { int dummy; } esp_eth_phy_t;
+          typedef struct { int dummy; } esp_eth_mac_t;
+          #define ETH_DEFAULT_CONFIG(mac, phy) {}
           #endif
           EOF
           
@@ -58,14 +65,16 @@ jobs:
             idf.py set-target esp32s3
           fi
           
-          # 3. ТЮНИНГ ПОД S3-N16R8 (Octal PSRAM и 16MB Flash)
-          echo 'CONFIG_ESP32S3_SPIRAM_SUPPORT=y' >> sdkconfig
-          echo 'CONFIG_SPIRAM_MODE_OCT=y' >> sdkconfig
-          echo 'CONFIG_SPIRAM_TYPE_AUTO=y' >> sdkconfig
-          echo 'CONFIG_SPIRAM_SIZE=-1' >> sdkconfig
-          echo 'CONFIG_SPIRAM_SPEED_80M=y' >> sdkconfig
-          echo 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' >> sdkconfig
-          echo 'CONFIG_ETH_ENABLED=n' >> sdkconfig
+          # 3. НАСТРОЙКИ ДЛЯ ТВОЕГО ЖЕЛЕЗА (S3-N16R8)
+          {
+            echo 'CONFIG_ESP32S3_SPIRAM_SUPPORT=y'
+            echo 'CONFIG_SPIRAM_MODE_OCT=y'
+            echo 'CONFIG_SPIRAM_TYPE_AUTO=y'
+            echo 'CONFIG_SPIRAM_SIZE=-1'
+            echo 'CONFIG_SPIRAM_SPEED_80M=y'
+            echo 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y'
+            echo 'CONFIG_ETH_ENABLED=n'
+          } >> sdkconfig
           
           # 4. СБОРКА
           idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}
@@ -75,7 +84,7 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: squeezelite-s3-build-${{ needs.job1.outputs.build_number }}
+        name: squeezelite-s3-v4.4-build-${{ needs.job1.outputs.build_number }}
         path: |
           build/*.bin
           build/bootloader/bootloader.bin
