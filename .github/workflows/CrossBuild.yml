@@ -35,44 +35,42 @@ jobs:
       run: |
         docker pull espressif/idf:release-v4.4
         docker run --rm -v $PWD:/project -w /project espressif/idf:release-v4.4 /bin/bash -c "
-          apt-get update && apt-get install -y zip protobuf-compiler && 
-          python3 -m pip install protobuf==3.19.6 && 
+          set -e
+          apt-get update && apt-get install -y zip protobuf-compiler
+          python3 -m pip install protobuf==3.19.6
           
-          export IDF_TARGET=esp32s3 && 
+          export IDF_TARGET=esp32s3
           
-          # 1. СОЗДАЕМ ЗАГЛУШКУ ETHERNET ЧЕРЕЗ ECHO (надежнее для Docker)
-          mkdir -p components/wifi-manager && 
-          echo '#ifndef ESP_ETH_H' > components/wifi-manager/esp_eth.h && 
-          echo '#define ESP_ETH_H' >> components/wifi-manager/esp_eth.h && 
-          echo '#include \"esp_err.h\"' >> components/wifi-manager/esp_eth.h && 
-          echo '#include \"esp_event.h\"' >> components/wifi-manager/esp_eth.h && 
-          echo 'typedef void* esp_eth_handle_t;' >> components/wifi-manager/esp_eth.h && 
-          echo 'typedef struct { int dummy; } esp_eth_config_t;' >> components/wifi-manager/esp_eth.h && 
-          echo 'typedef struct { int dummy; } esp_eth_phy_t;' >> components/wifi-manager/esp_eth.h && 
-          echo 'typedef struct { int dummy; } esp_eth_mac_t;' >> components/wifi-manager/esp_eth.h && 
-          echo '#define ETH_DEFAULT_CONFIG(mac, phy) {0}' >> components/wifi-manager/esp_eth.h && 
-          echo 'static inline esp_err_t esp_eth_driver_install(const esp_eth_config_t *config, esp_eth_handle_t *out_hdl) { return 0; }' >> components/wifi-manager/esp_eth.h && 
-          echo 'static inline esp_err_t esp_eth_driver_uninstall(esp_eth_handle_t hdl) { return 0; }' >> components/wifi-manager/esp_eth.h && 
-          echo '#endif' >> components/wifi-manager/esp_eth.h && 
+          # 1. ХИРУРГИЧЕСКОЕ УДАЛЕНИЕ ETHERNET ИЗ СБОРКИ
+          # Удаляем файлы network_ethernet.c и драйверы из CMakeLists.txt компонента wifi-manager
+          sed -i '/network_ethernet.c/d' components/wifi-manager/CMakeLists.txt
+          sed -i '/network_driver_LAN8720.c/d' components/wifi-manager/CMakeLists.txt
+          sed -i '/network_driver_W5500.c/d' components/wifi-manager/CMakeLists.txt
           
+          # Также создаем пустую заглушку для заголовочного файла, чтобы другие файлы не падали
+          mkdir -p components/wifi-manager
+          echo '#ifndef ESP_ETH_H\n#define ESP_ETH_H\ntypedef void* esp_eth_handle_t;\n#endif' > components/wifi-manager/esp_eth.h
+
           # 2. ПОДГОТОВКА КОНФИГУРАЦИИ
-          rm -rf build sdkconfig && 
-          if [ -f build-scripts/${{ matrix.platform }}-sdkconfig.defaults ]; then 
-            cp build-scripts/${{ matrix.platform }}-sdkconfig.defaults sdkconfig; 
-          else 
-            idf.py set-target esp32s3; 
-          fi && 
+          rm -rf build sdkconfig
+          if [ -f build-scripts/${{ matrix.platform }}-sdkconfig.defaults ]; then
+            cp build-scripts/${{ matrix.platform }}-sdkconfig.defaults sdkconfig
+          else
+            idf.py set-target esp32s3
+          fi
           
-          # 3. НАСТРОЙКИ ПАМЯТИ
-          echo 'CONFIG_ESP32S3_SPIRAM_SUPPORT=y' >> sdkconfig && 
-          echo 'CONFIG_SPIRAM_MODE_OCT=y' >> sdkconfig && 
-          echo 'CONFIG_SPIRAM_TYPE_AUTO=y' >> sdkconfig && 
-          echo 'CONFIG_SPIRAM_SIZE=-1' >> sdkconfig && 
-          echo 'CONFIG_SPIRAM_SPEED_80M=y' >> sdkconfig && 
-          echo 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' >> sdkconfig && 
-          echo 'CONFIG_ETH_ENABLED=n' >> sdkconfig && 
+          # 3. НАСТРОЙКИ ПАМЯТИ N16R8
+          cat >> sdkconfig <<L_EOF
+          CONFIG_ESP32S3_SPIRAM_SUPPORT=y
+          CONFIG_SPIRAM_MODE_OCT=y
+          CONFIG_SPIRAM_TYPE_AUTO=y
+          CONFIG_SPIRAM_SIZE=-1
+          CONFIG_SPIRAM_SPEED_80M=y
+          CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+          CONFIG_ETH_ENABLED=n
+          L_EOF
           
-          # 4. ЗАПУСК СБОРКИ
+          # 4. СБОРКА
           idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}
         "
 
