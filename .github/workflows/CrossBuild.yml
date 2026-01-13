@@ -41,36 +41,32 @@ jobs:
           
           export IDF_TARGET=esp32s3
           
-          # 1. ХИРУРГИЧЕСКОЕ УДАЛЕНИЕ ETHERNET ИЗ СБОРКИ
-          # Удаляем файлы network_ethernet.c и драйверы из CMakeLists.txt компонента wifi-manager
+          # 1. Вырезаем Ethernet из списка файлов (через удаление строки целиком)
           sed -i '/network_ethernet.c/d' components/wifi-manager/CMakeLists.txt
           sed -i '/network_driver_LAN8720.c/d' components/wifi-manager/CMakeLists.txt
           sed -i '/network_driver_W5500.c/d' components/wifi-manager/CMakeLists.txt
           
-          # Также создаем пустую заглушку для заголовочного файла, чтобы другие файлы не падали
+          # 2. Создаем заголовок простым echo
           mkdir -p components/wifi-manager
-          echo '#ifndef ESP_ETH_H\n#define ESP_ETH_H\ntypedef void* esp_eth_handle_t;\n#endif' > components/wifi-manager/esp_eth.h
+          echo '#ifndef ESP_ETH_H' > components/wifi-manager/esp_eth.h
+          echo '#define ESP_ETH_H' >> components/wifi-manager/esp_eth.h
+          echo 'typedef void* esp_eth_handle_t;' >> components/wifi-manager/esp_eth.h
+          echo '#endif' >> components/wifi-manager/esp_eth.h
 
-          # 2. ПОДГОТОВКА КОНФИГУРАЦИИ
+          # 3. Подготовка конфига
           rm -rf build sdkconfig
-          if [ -f build-scripts/${{ matrix.platform }}-sdkconfig.defaults ]; then
-            cp build-scripts/${{ matrix.platform }}-sdkconfig.defaults sdkconfig
-          else
-            idf.py set-target esp32s3
-          fi
+          cp build-scripts/${{ matrix.platform }}-sdkconfig.defaults sdkconfig || idf.py set-target esp32s3
           
-          # 3. НАСТРОЙКИ ПАМЯТИ N16R8
-          cat >> sdkconfig <<L_EOF
-          CONFIG_ESP32S3_SPIRAM_SUPPORT=y
-          CONFIG_SPIRAM_MODE_OCT=y
-          CONFIG_SPIRAM_TYPE_AUTO=y
-          CONFIG_SPIRAM_SIZE=-1
-          CONFIG_SPIRAM_SPEED_80M=y
-          CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-          CONFIG_ETH_ENABLED=n
-          L_EOF
+          # 4. Настройки памяти (просто дописываем в конец файла)
+          echo 'CONFIG_ESP32S3_SPIRAM_SUPPORT=y' >> sdkconfig
+          echo 'CONFIG_SPIRAM_MODE_OCT=y' >> sdkconfig
+          echo 'CONFIG_SPIRAM_TYPE_AUTO=y' >> sdkconfig
+          echo 'CONFIG_SPIRAM_SIZE=-1' >> sdkconfig
+          echo 'CONFIG_SPIRAM_SPEED_80M=y' >> sdkconfig
+          echo 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' >> sdkconfig
+          echo 'CONFIG_ETH_ENABLED=n' >> sdkconfig
           
-          # 4. СБОРКА
+          # 5. Сборка
           idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}
         "
 
