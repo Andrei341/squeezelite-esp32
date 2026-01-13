@@ -1,4 +1,4 @@
-name: Cross-Build-S3-v4.4
+name: Cross-Build-S3-N16R8
 
 on:
   workflow_dispatch:
@@ -24,7 +24,7 @@ jobs:
     needs: job1
     strategy:
       matrix:
-        platform: [S3-16-o-q-ads] # Проверьте имя конфига в build-scripts
+        platform: [S3-16-o-q-ads] # Убедитесь, что этот файл есть в build-scripts/
         depth: [16]
     steps:
     - name: Checkout code
@@ -34,40 +34,49 @@ jobs:
 
     - name: Build the firmware
       run: |
-        # Используем образ v4.4
+        # Используем образ IDF 4.4, так как он стабильнее всего для S3
         docker pull espressif/idf:release-v4.4
         docker run --rm -v $PWD:/project -w /project espressif/idf:release-v4.4 /bin/bash -c "
           apt-get update && apt-get install -y zip protobuf-compiler && 
           python3 -m pip install protobuf==3.19.6 && 
           
-          # Устанавливаем цель сборки
+          # 1. Устанавливаем цель сборки
           export IDF_TARGET=esp32s3
           
-          # Очистка и подготовка конфига
+          # 2. ФИКС ETHERNET (заглушка для wifi-manager)
+          mkdir -p /opt/esp/idf/components/esp_eth/include
+          touch /opt/esp/idf/components/esp_eth/include/esp_eth.h
+          
+          # 3. ПОДГОТОВКА КОНФИГУРАЦИИ
           rm -rf build sdkconfig
           if [ -f build-scripts/${{ matrix.platform }}-sdkconfig.defaults ]; then
             cp build-scripts/${{ matrix.platform }}-sdkconfig.defaults sdkconfig
           else
-            # Если файла нет, создаем минимальный для S3
             idf.py set-target esp32s3
           fi
           
-          # Настройки для S3-N16R8 (16MB Flash, 8MB Octal PSRAM)
+          # 4. ТЮНИНГ ПОД S3-N16R8 (Octal PSRAM и 16MB Flash)
           echo 'CONFIG_ESP32S3_SPIRAM_SUPPORT=y' >> sdkconfig
           echo 'CONFIG_SPIRAM_MODE_OCT=y' >> sdkconfig
+          echo 'CONFIG_SPIRAM_TYPE_AUTO=y' >> sdkconfig
+          echo 'CONFIG_SPIRAM_SIZE=-1' >> sdkconfig
           echo 'CONFIG_SPIRAM_SPEED_80M=y' >> sdkconfig
           echo 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' >> sdkconfig
+          echo 'CONFIG_ETH_ENABLED=n' >> sdkconfig
+          echo 'CONFIG_PM_ENABLE=n' >> sdkconfig
           
-          # Сама сборка
+          # 5. СБОРКА
           idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}
         "
 
     - name: Upload Artifacts
-      if: success()
+      if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: squeezelite-s3-v4.4-${{ needs.job1.outputs.build_number }}
+        name: squeezelite-s3-n16r8-build-${{ needs.job1.outputs.build_number }}
         path: |
           build/*.bin
           build/bootloader/bootloader.bin
           build/partition_table/partition-table.bin
+          build/sdkconfig
+          build/*.map
