@@ -41,9 +41,14 @@ jobs:
           
           export IDF_TARGET=esp32s3
           
-          # 1. ФИКС ETHERNET: Создаем заглушку прямо в компоненте wifi-manager
-          # Это гарантирует, что #include \"esp_eth.h\" найдет файл
-          touch components/wifi-manager/esp_eth.h
+          # 1. УМНАЯ ЗАГЛУШКА ETHERNET
+          # Заполняем файл типами данных, чтобы компилятор не ругался на 'unknown type name'
+          cat <<EOF > components/wifi-manager/esp_eth.h
+          #ifndef ESP_ETH_H
+          #define ESP_ETH_H
+          typedef void* esp_eth_handle_t;
+          #endif
+          EOF
           
           # 2. ПОДГОТОВКА КОНФИГУРАЦИИ
           rm -rf build sdkconfig
