@@ -38,47 +38,42 @@ jobs:
           apt-get update && apt-get install -y zip protobuf-compiler && 
           python3 -m pip install protobuf==3.19.6 && 
           
-          export IDF_TARGET=esp32s3
+          export IDF_TARGET=esp32s3 && 
           
-          # 1. ЗАГЛУШКА ETHERNET (расширенная для линковки)
-          mkdir -p components/wifi-manager
-          cat <<EOF > components/wifi-manager/esp_eth.h
-          #ifndef ESP_ETH_H
-          #define ESP_ETH_H
-          #include \"esp_err.h\"
-          #include \"esp_event.h\"
-          typedef void* esp_eth_handle_t;
-          typedef struct { int dummy; } esp_eth_config_t;
-          typedef struct { int dummy; } esp_eth_phy_t;
-          typedef struct { int dummy; } esp_eth_mac_t;
-          #define ETH_DEFAULT_CONFIG(mac, phy) {0}
-          inline esp_err_t esp_eth_driver_install(const esp_eth_config_t *config, esp_eth_handle_t *out_hdl) { return ESP_OK; }
-          inline esp_err_t esp_eth_driver_uninstall(esp_eth_handle_t hdl) { return ESP_OK; }
-          #endif
-          EOF
+          # 1. СОЗДАЕМ ЗАГЛУШКУ ETHERNET ЧЕРЕЗ ECHO (надежнее для Docker)
+          mkdir -p components/wifi-manager && 
+          echo '#ifndef ESP_ETH_H' > components/wifi-manager/esp_eth.h && 
+          echo '#define ESP_ETH_H' >> components/wifi-manager/esp_eth.h && 
+          echo '#include \"esp_err.h\"' >> components/wifi-manager/esp_eth.h && 
+          echo '#include \"esp_event.h\"' >> components/wifi-manager/esp_eth.h && 
+          echo 'typedef void* esp_eth_handle_t;' >> components/wifi-manager/esp_eth.h && 
+          echo 'typedef struct { int dummy; } esp_eth_config_t;' >> components/wifi-manager/esp_eth.h && 
+          echo 'typedef struct { int dummy; } esp_eth_phy_t;' >> components/wifi-manager/esp_eth.h && 
+          echo 'typedef struct { int dummy; } esp_eth_mac_t;' >> components/wifi-manager/esp_eth.h && 
+          echo '#define ETH_DEFAULT_CONFIG(mac, phy) {0}' >> components/wifi-manager/esp_eth.h && 
+          echo 'static inline esp_err_t esp_eth_driver_install(const esp_eth_config_t *config, esp_eth_handle_t *out_hdl) { return 0; }' >> components/wifi-manager/esp_eth.h && 
+          echo 'static inline esp_err_t esp_eth_driver_uninstall(esp_eth_handle_t hdl) { return 0; }' >> components/wifi-manager/esp_eth.h && 
+          echo '#endif' >> components/wifi-manager/esp_eth.h && 
           
           # 2. ПОДГОТОВКА КОНФИГУРАЦИИ
-          rm -rf build sdkconfig
-          if [ -f build-scripts/${{ matrix.platform }}-sdkconfig.defaults ]; then
-            cp build-scripts/${{ matrix.platform }}-sdkconfig.defaults sdkconfig
-          else
-            idf.py set-target esp32s3
-          fi
+          rm -rf build sdkconfig && 
+          if [ -f build-scripts/${{ matrix.platform }}-sdkconfig.defaults ]; then 
+            cp build-scripts/${{ matrix.platform }}-sdkconfig.defaults sdkconfig; 
+          else 
+            idf.py set-target esp32s3; 
+          fi && 
           
-          # 3. НАСТРОЙКИ ДЛЯ S3-N16R8
-          {
-            echo 'CONFIG_ESP32S3_SPIRAM_SUPPORT=y'
-            echo 'CONFIG_SPIRAM_MODE_OCT=y'
-            echo 'CONFIG_SPIRAM_TYPE_AUTO=y'
-            echo 'CONFIG_SPIRAM_SIZE=-1'
-            echo 'CONFIG_SPIRAM_SPEED_80M=y'
-            echo 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y'
-            echo 'CONFIG_ETH_ENABLED=n'
-          } >> sdkconfig
+          # 3. НАСТРОЙКИ ПАМЯТИ
+          echo 'CONFIG_ESP32S3_SPIRAM_SUPPORT=y' >> sdkconfig && 
+          echo 'CONFIG_SPIRAM_MODE_OCT=y' >> sdkconfig && 
+          echo 'CONFIG_SPIRAM_TYPE_AUTO=y' >> sdkconfig && 
+          echo 'CONFIG_SPIRAM_SIZE=-1' >> sdkconfig && 
+          echo 'CONFIG_SPIRAM_SPEED_80M=y' >> sdkconfig && 
+          echo 'CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y' >> sdkconfig && 
+          echo 'CONFIG_ETH_ENABLED=n' >> sdkconfig && 
           
-          # 4. СБОРКА С ЛОГИРОВАНИЕМ ОШИБОК
-          # Перенаправляем вывод, чтобы видеть причину падения
-          idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }} || (tail -n 100 build/build.log && exit 1)
+          # 4. ЗАПУСК СБОРКИ
+          idf.py build -DDEPTH=${{ matrix.depth }} -DBUILD_NUMBER=${{ needs.job1.outputs.build_number }}
         "
 
     - name: Upload Artifacts
